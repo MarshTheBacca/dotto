@@ -4,11 +4,11 @@ from utils import (SCORES_PATH, Game, SettingsData, get_valid_int, import_2d,
 
 def main() -> None:
     settings = SettingsData()
-    game = Game(SettingsData)
     while True:
         print("===========================\n     Welcome To Dotto!     \n===========================")
         option = get_valid_int("What would you like to do?\n1) Play\n2) Settings\n3) View Scores\n4) Exit\n", 1, 4)
         if option == 1:
+            game = Game(settings)
             game.play()
         elif option == 2:
             settings.edit()
