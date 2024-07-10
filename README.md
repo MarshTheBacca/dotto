@@ -2,10 +2,15 @@
 
 Dotto is a terminal-based board game. The objective of the game is to capture all of your opponents pieces by moving across the board tactically and using powerups wisely.
 
+![](example_start.png)
+
+
 ## Game Context
 
 The board is made up of regular spaces described by the following characters:
 
+* `O` Player 1's pieces
+* `X` Player 2's pieces
 * `/` Regular space
 * `#` Barrier - cannot be moved onto
 * `~` Crumbly - may be moved onto, but disappears upon departure
