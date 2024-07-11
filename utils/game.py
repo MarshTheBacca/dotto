@@ -24,14 +24,6 @@ class Game:
         self.turn_number: int = 1
         self.turn = 1
 
-    @property
-    def target_char(self) -> str:
-        return DOT_CHARS[3 - self.turn]
-
-    @property
-    def ally_char(self) -> str:
-        return DOT_CHARS[self.turn]
-
     def edit_coord(self, prompt: str, target_char: str, new_char: str) -> tuple[int, int] | None:
         while True:
             coord = get_valid_coord(prompt, self.settings.length, self.settings.width)
@@ -111,7 +103,7 @@ class Game:
             return None
         return moves[wasd]
 
-    def actual_move(self, vectors: list[tuple[int, int]]) -> bool:
+    def attempt_move(self, vectors: list[tuple[int, int]]) -> bool:
         while True:
             origin = self.get_origin()
             if origin is None:
@@ -134,6 +126,52 @@ class Game:
                     return False
         return True
 
+    def handle_delete_create(self, action_name: str, count_dict: dict[int, int],
+                             prompt: str, target_char: str, new_char: str) -> bool:
+        if count_dict[self.turn] == 0:
+            print(f"You have run out of {action_name}s")
+            return False
+        print(f"Number of {action_name}s remaining: {count_dict[self.turn]}")
+        if self.edit_coord(prompt, target_char, new_char) is None:
+            return False
+        count_dict[self.turn] -= 1
+        return True
+
+    def use_powerup(self) -> bool:
+        if not self.inventory[self.turn]:
+            print("You don't have any powerups")
+            return False
+        prompt = "Which one would you like to use?\n"
+        for i, powerup in enumerate(self.inventory[self.turn]):
+            prompt += f"{i + 1}) {powerup}\n"
+        exit_num = len(self.inventory[self.turn]) + 1
+        prompt += f"{exit_num}) Cancel\n"
+        choice = get_valid_int(prompt, 1, exit_num)
+        if choice == exit_num:
+            return False
+        chosen_powerup = self.inventory[self.turn][choice - 1]
+        if chosen_powerup == "Portal":
+            coord_1 = self.edit_coord("Where would you like the entrance to your portal?", "/", "@")
+            if coord_1 is None:
+                return False
+            coord_2 = self.edit_coord("Where would you like the exit to your portal", "/", "@")
+            if coord_2 is None:
+                self.board.replace_char(coord_1, "/")  # undo the first portal
+                return False
+            self.board.portals.append(Portal(coord_1, coord_2))
+        elif chosen_powerup == "Double-Jump":
+            return self.attempt_move([[0, 2], [0, -2], [2, 0], [-2, 0]])
+        elif chosen_powerup == "Destroyer":
+            return self.edit_coord("Which barrier would you like to destroy?", "#", "/") is None
+        del (self.inventory[self.turn][choice - 1])
+        return True
+
+    def score_save(self) -> None:
+        if confirm("Would you like to save your scores?"):
+            scores = import_2d(SCORES_PATH)
+            scores.append([input("Enter your names"), self.board.length, self.board.width, self.settings.num_dots, self.turn_number])
+            export_2d(SCORES_PATH, scores)
+
     def play(self) -> None:
         while True:
             if self.turn_number % self.settings.powerup_frequency == 0:
@@ -142,52 +180,14 @@ class Game:
             print(f"Player {self.turn}'s Turn\t\t\tTurn: {self.turn_number}")
             option = get_valid_int("What would you like to do?\n1) Move\n2) Delete a space\n"
                                    "3) Create a space\n4) Use a powerup\n5) Concede\n", 1, 5)
-            if option == 1:
-                if not self.actual_move([[0, 1], [0, -1], [1, 0], [-1, 0]]):
-                    continue
-            elif option == 2:
-                if self.deletes[self.turn] == 0:
-                    print("You have run out of deletes")
-                    continue
-                print(f"Number of deletes remaining: {self.deletes[self.turn]}")
-                if self.edit_coord("Which space would you like to delete?", "/", " ") is None:
-                    continue
-                self.deletes[self.turn] -= 1
-            elif option == 3:
-                if self.creates[self.turn] == 0:
-                    print("You have run out of creates")
-                    continue
-                print(f"Number of creates remaining: {self.creates[self.turn]}")
-                if self.edit_coord("Which space would you like to create?", " ", "/") is None:
-                    continue
-                self.creates[self.turn] -= 1
-            elif option == 4:
-                if not self.inventory[self.turn]:
-                    print("You don't have any powerups")
-                    continue
-                prompt = "Which one would you like to use?\n"
-                for i, powerup in enumerate(self.inventory[self.turn]):
-                    prompt += f"{i + 1}) {powerup}\n"
-                exit_num = len(self.inventory[self.turn]) + 1
-                prompt += f"{exit_num}) Cancel\n"
-                choice = get_valid_int(prompt, 1, exit_num)
-                if choice == exit_num:
-                    continue
-                chosen_powerup = self.inventory[self.turn][choice - 1]
-                if chosen_powerup == "Portal":
-                    coord_1 = self.edit_coord("Where would you like the entrance to your portal?", "/", "@")
-                    if coord_1 is None:
-                        continue
-                    coord_2 = self.edit_coord("Where would you like the exit to your portal", "/", "@")
-                    if coord_2 is None:
-                        self.board.replace_char(coord_1, "/")  # undo the first portal
-                        continue
-                    self.board.portals.append(Portal(coord_1, coord_2))
-                elif chosen_powerup == "Double-Jump" and not self.actual_move([[0, 2], [0, -2], [2, 0], [-2, 0]]):
-                    continue
-                elif chosen_powerup == "Destroyer" and self.edit_coord("Which barrier would you like to destroy?", "#", "/") is None:
-                    continue
-                del (self.inventory[self.turn][choice - 1])
+            if option == 1 and not self.attempt_move([[0, 1], [0, -1], [1, 0], [-1, 0]]):
+                continue
+            elif option == 2 and not self.handle_delete_create("delete", self.deletes, "Which space would you like to delete?", "/", " "):
+                continue
+            elif option == 3 and not self.handle_delete_create("create", self.creates, "Which space would you like to create?", " ", "/"):
+                continue
+            elif option == 4 and not self.use_powerup():
+                continue
             elif option == 5 and confirm("Are you sure?"):
                 break
             if self.check_defeat():
@@ -196,7 +196,12 @@ class Game:
             self.turn = 1 if self.turn == 2 else 2
             self.turn_number += 1
         print(f"Player {self.turn} has won in {self.turn_number} turns!")
-        if confirm("Would you like to save your scores?"):
-            scores = import_2d(SCORES_PATH)
-            scores.append([input("Enter your names"), self.board.length, self.board.width, self.settings.num_dots, self.turn_number])
-            export_2d(SCORES_PATH, scores)
+        self.score_save()
+
+    @property
+    def target_char(self) -> str:
+        return DOT_CHARS[3 - self.turn]
+
+    @property
+    def ally_char(self) -> str:
+        return DOT_CHARS[self.turn]
