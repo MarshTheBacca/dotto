@@ -2,8 +2,8 @@ import random
 from dataclasses import dataclass, field
 
 from .board import Board
-from .constants import LETTERS, POWERUPS, SCORES_PATH
-from .other_utils import export_2d, import_2d
+from .constants import POWERUPS, SCORES_PATH
+from .other_utils import export_2d, import_2d, coord_to_string
 from .portal import Portal
 from .settings_data import SettingsData
 from .validation_utils import (confirm, get_valid_coord, get_valid_int,
@@ -54,9 +54,6 @@ class Game:
             return self.calculate_move(destination, vector)
         return destination
 
-    def detect_moves(self, vectors: list[tuple[int, int]]) -> list[list[tuple[int, int] | None]]:
-        return [[self.calculate_move(dot_coord, vector) for vector in vectors] for dot_coord in self.board.dot_coords[self.turn]]
-
     def update_portals(self, coord: tuple[int, int]) -> tuple[int, int]:
         for portal in self.board.portals:
             if portal.is_member(coord):
@@ -85,49 +82,48 @@ class Game:
         self.board.replace_char(destination, self.ally_char)
         self.board.dot_coords[self.turn].append(destination)
         self.board.dot_coords[self.turn].remove(origin)
-        # sort coordinates by y, then x
         self.board.dot_coords[self.turn].sort(key=lambda x: (x[0], x[1]))
 
-    def print_dot_options(self) -> str:
-        line = "Which one would you like to move?"
-        for index, (x, y) in enumerate(self.board.dot_coords[self.turn], start=1):
-            line += f"\n{index}) {'0' if y + 1 < 10 and self.board.width > 9 else ''}{y + 1}{LETTERS[x]}"
-        line += f"\n{len(self.board.dot_coords[self.turn]) + 1}) Cancel\n"
-        return line
+    def get_origin(self) -> tuple[int, int] | None:
+        prompt = "Which dot would you like to move?"
+        for i, coord in enumerate(self.board.dot_coords[self.turn], start=1):
+            prompt += f"\n{i}) {coord_to_string(coord)}"
+        exit_num = len(self.board.dot_coords[self.turn]) + 1
+        prompt += f"\n{exit_num}) Cancel\n"
+        selected = get_valid_int(prompt, 1, exit_num)
+        if selected == exit_num:
+            return None
+        return self.board.dot_coords[self.turn][selected - 1]
 
-    def print_move_options(self, possible_moves: list[list[tuple[int, int] | None]], selected: int) -> tuple[str, list[str]]:
+    def detect_moves(self, origin: tuple[int, int], vectors: list[tuple[int, int]]) -> dict[str, tuple[int, int]]:
+        moves = {key: self.calculate_move(origin, vector) for key, vector in zip("DASW", vectors)}
+        return {direction: move for direction, move in moves.items() if move is not None}
+
+    def get_destination(self, moves: dict[str, tuple[int, int]]) -> tuple[int, int] | None:
+        prompt = "Which direction would you like to move?"
         DIRECTIONS = {"D": "Right", "A": "Left", "S": "Down", "W": "Up"}
-        line = "Which direction would you like to move?"
-        accepted = ["C", "c"]
-        for i, move in enumerate(possible_moves[selected - 1]):
-            if move is not None:
-                key = "DASW"[i]
-                line += f"\n{key}) {DIRECTIONS[key]}"
-                accepted += [key, key.lower()]
-        line += "\nC) Cancel\n"
-        return line, accepted
+        for direction in moves:
+            prompt += f"\n{direction}) {DIRECTIONS[direction]}"
+        prompt += "\nC) Cancel\n"
+        accepted = ["C", "c"] + list(moves.keys()) + [key.lower() for key in moves.keys()]
+        wasd = get_valid_str(prompt, 1, 1, accepted).upper()
+        if wasd == "C":
+            return None
+        return moves[wasd]
 
     def actual_move(self, vectors: list[tuple[int, int]]) -> bool:
-        possible_moves = self.detect_moves(vectors)
-        print(possible_moves)
-        line = self.print_dot_options()
-        exit_num = len(self.board.dot_coords[self.turn]) + 1
-        selected = get_valid_int(line, 1, exit_num)
-        if selected == exit_num:
+        while True:
+            origin = self.get_origin()
+            if origin is None:
+                return False
+            moves = self.detect_moves(origin, vectors)
+            if not moves:
+                print("This dot cannot move.")
+                continue
+            break
+        destination = self.get_destination(moves)
+        if destination is None:
             return False
-
-        if not any(possible_moves[selected - 1]):
-            print("That dot can't move")
-            return False
-
-        line, accepted = self.print_move_options(possible_moves, selected)
-        wasd = get_valid_str(line, 1, 1, accepted).upper()
-        if wasd == "C":
-            return False
-
-        indexes = {"D": 0, "A": 1, "S": 2, "W": 3}
-        origin = self.board.dot_coords[self.turn][selected - 1]
-        destination = possible_moves[selected - 1][indexes[wasd]]
         self.process_move(origin, destination)
         return True
 
@@ -162,7 +158,7 @@ class Game:
                     print("You have run out of creates")
                     continue
                 print(f"Number of creates remaining: {self.creates[self.turn]}")
-                if self.edit_coord("Which space would you like to delete?", "/", " ") is None:
+                if self.edit_coord("Which space would you like to create?", " ", "/") is None:
                     continue
                 self.creates[self.turn] -= 1
             elif option == 4:
