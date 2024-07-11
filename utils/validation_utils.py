@@ -1,4 +1,6 @@
-from .other_utils import letters_to_index
+import re
+
+from .other_utils import letters_to_index, string_to_coord
 
 
 def get_valid_int(prompt: str, lower: float | int = float("-inf"),
@@ -46,28 +48,15 @@ def get_valid_str(string, lower, upper, accepted: list[str] | None = None,
 
 
 def get_valid_coord(prompt: str, length: int, width: int, exit_string: str = "c") -> tuple[int, int] | None:
-    num_digits = len(str(width))
-    if length <= 26:
-        num_letters = 1
-    elif length <= 26**2:
-        num_letters = 2
-    else:
-        num_letters = 3
-
     while True:
-        coord = input(f"{prompt}. Enter coordinate (e.g., 1A or 001AAA for larger boards, '{exit_string}' to cancel)\n")
+        coord = input(f"{prompt}. Enter coordinate (e.g. 1A, '{exit_string}' to cancel)\n")
         if coord == exit_string:
             return None
-        if len(coord) < num_digits + num_letters:
-            print(f"Coordinate is not the correct number of characters ({num_digits + num_letters})")
+        if not re.match(r"^\d+[A-Z]+$", coord):
+            print("Invalid coordinate format")
             continue
-        numeric_part, alphabetic_part = coord[:num_digits], coord[num_digits:]
-        if not numeric_part.isdigit() or not alphabetic_part.isalpha():
-            print("Coordinate is not valid")
-            continue
-        x = int(numeric_part) - 1
-        y = letters_to_index(alphabetic_part)
-        if x < 0 or x >= width or y < 0 or y >= length:
+        coord = string_to_coord(coord)
+        if coord[0] < 0 or coord[0] >= width or coord[1] < 0 or coord[1] >= length:
             print("Coordinate is out of bounds")
             continue
-        return y, x
+        return coord
